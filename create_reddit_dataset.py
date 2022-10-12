@@ -61,11 +61,11 @@ else:
     df_covid_r["is_covid_related"] = True
 
     ### Select only those comments on subreddits where there's more than 20 unique users talking about covid ###
-    print("Selecting comments on subreddits with more than 20 users talking about covid... ", end="")
-    covid_comments = df_other_r[df_other_r["is_covid_related"] == True] 
-    covid_users_per_subreddit = covid_comments.groupby(["Subreddit", "Author"]).size().reset_index().groupby("Subreddit").size().reset_index().rename(columns={0: 'count'})
-    subreddits_with_covid_20_covid_users = covid_users_per_subreddit[covid_users_per_subreddit['count'] >= 20]["Subreddit"]
-    df_other_r = df_other_r[df_other_r["Subreddit"].isin(subreddits_with_covid_20_covid_users)]
+    # print("Selecting comments on subreddits with more than 20 users talking about covid... ", end="")
+    # covid_comments = df_other_r[df_other_r["is_covid_related"] == True] 
+    # covid_users_per_subreddit = covid_comments.groupby(["Subreddit", "Author"]).size().reset_index().groupby("Subreddit").size().reset_index().rename(columns={0: 'count'})
+    # subreddits_with_covid_20_covid_users = covid_users_per_subreddit[covid_users_per_subreddit['count'] >= 20]["Subreddit"]
+    # df_other_r = df_other_r[df_other_r["Subreddit"].isin(subreddits_with_covid_20_covid_users)]
 
     ### Merge r/covid and other subreddis' comments datasets ###
     print("Merging both datasets...")
@@ -78,6 +78,16 @@ else:
 
     print(f"Obtained dataset with {df.shape[0]} comments.")
 
+    df = df.assign(author_id=(df["Author"]).astype('category').cat.codes)
+    df = df.assign(subreddit_id=(df["Subreddit"]).astype('category').cat.codes)
+    df = df.drop(['Subreddit', 'Author'], axis=1)
+    df["comment_id"] = np.arange(0, df.shape[0]).tolist()
+
+    print(df)
+
+    df.to_csv(f'preprocessed_datasets/{CORONAVIRUS_FILENAME}_RAWFINAL', encoding='utf-8', index=False)
+
+    input()
     ##########################################################
     #       STEP 2 : PREPARE FOR SAMPLING AND EMBEDDING      #
     ##########################################################
