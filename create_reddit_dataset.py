@@ -166,12 +166,19 @@ if MODE == "embeds":
         return np.average(text_model(tokenizer(text, return_tensors='tf', padding=True, truncation=True))[0].numpy(),axis=1)
 
     #Embed all texts 
+
+    batch_size=1
+    comments=np.array_split(comments,comments.shape[0]//batch_size+1)
+
     for i, batch in enumerate(comments):
+
         mem = psutil.Process(getpid()).memory_info().rss / 1024 ** 2
-        if i%100==0:
-            print(f"\033[K Processing texts... text {batch[:50]} ({i + 1}/{len(comments)}), Memory usage: {mem} MB",
+
+        if i%10==0:
+            print(f"\033[K Processing texts... {batch[0][:50]} batch ({i + 1}/{len(comments)}), Memory usage: {mem} MB",
                 end="\r")
-        embeddings[i] = embed_text(batch)
+
+        embeddings[i*batch_size:i*batch_size+batch.shape[0]] = embed_text(list(batch))
 
     print("\n")
     print("Freeing up memory... Memory Usage:", psutil.Process(getpid()).memory_info().rss / 1024 ** 2)
