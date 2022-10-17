@@ -1,25 +1,27 @@
-import pandas as pd
 import datetime
+import os
 import pickle
-from os import makedirs, getpid
+from os import getpid, makedirs
+from random import choice
+
 import numpy as np
+import pandas as pd
 import psutil
-from random import choices
 import tqdm
 
-MODE=None
+MODE="embeds"
 CORONAVIRUS_FILENAME = "coronavirus_2021q1_all.csv"
 OTHER_SUBREDDITS_FILENAME = "r_coronavirus_users_comments_march21.csv"
 DATETIME_MIN = datetime.datetime.timestamp(datetime.datetime(2021, 3, 1, 0))
 DATASET_NAME = "MARCH_21"
-LOAD_PREPROCESSED_DATASET=False
-DO_TEXT_PREPROCESSING=True
+LOAD_PREPROCESSED_DATASET=True
+DO_TEXT_PREPROCESSING=False
 
 ############# STEP 1 : COMMENT SELECTION #############
 
 #If we have a preprocessed dataset already, we can use that (only selects comments that are not generic)
 if LOAD_PREPROCESSED_DATASET:
-    df = pd.read_csv('preprocessed_datasets/{CORONAVIRUS_FILENAME}_preprocessed')
+    df = pd.read_csv(f'preprocessed_datasets/{CORONAVIRUS_FILENAME[:-4]}_preprocessed_preprocessed_toxicity.csv')
     print(f"Loaded preprocessed dataset with {df.shape[0]} comments")
 
 else: 
@@ -146,25 +148,29 @@ if MODE == "embeds":
     print("Pickling with protocol ", pickle.HIGHEST_PROTOCOL)
     print("Creating ", comments.shape[0], " embeds")
 
-    from transformers import BertTokenizer, TFBertModel
     import gc
 
+    from transformers import BertTokenizer, TFBertModel
+    
+    os.makedirs('BERT_EMBEDDINGS',exist_ok=True)
     # Initialize BERT model
     
     text_model = TFBertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased') 
 
     embeddings = np.zeros((comments.shape[0], 768))
 
 
     #Function to embed a single text
     def embed_text(text):
-        return text_model(tokenizer(text, return_tensors='tf', padding=True, truncation=True))[1].numpy()
+        return np.average(text_model(tokenizer(text, return_tensors='tf', padding=True, truncation=True))[0].numpy(),axis=1)
 
     #Embed all texts 
     for i, batch in enumerate(comments):
         mem = psutil.Process(getpid()).memory_info().rss / 1024 ** 2
-        print(f"\033[K Processing texts... text {batch[:50]} ({i + 1}/{len(comments)}), Memory usage: {mem} MB",
-              end="\r")
+        if i%100==0:
+            print(f"\033[K Processing texts... text {batch[:50]} ({i + 1}/{len(comments)}), Memory usage: {mem} MB",
+                end="\r")
         embeddings[i] = embed_text(batch)
 
     print("\n")
@@ -180,7 +186,7 @@ if MODE == "embeds":
     gc.collect()
 
     print("Saving pickle... Memory Usage:", psutil.Process(getpid()).memory_info().rss / 1024 ** 2)
-    with open(f"{DATASET_NAME}/IMGMODEL/data_10+10/CONTENTS", 'wb') as handle:
+    with open(f"BERT_EMBEDDINGS/{DATASET_NAME}", 'wb') as handle:
         pickle.dump(embeddings, handle, protocol=pickle.HIGHEST_PROTOCOL)
     print("Saved pickle.")
 
