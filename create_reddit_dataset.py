@@ -1,4 +1,5 @@
 import datetime
+import math
 import os
 import pickle
 from os import getpid, makedirs
@@ -167,8 +168,8 @@ if MODE == "embeds":
 
     #Embed all texts 
 
-    batch_size=1
-    comments=np.array_split(comments,comments.shape[0]//batch_size+1)
+    batch_size=32
+    comments=np.array_split(comments,math.ceil(comments.shape[0]/batch_size))
 
     for i, batch in enumerate(comments):
 
@@ -185,11 +186,13 @@ if MODE == "embeds":
 
     # Collect garbage
     del df
+    del comments
     texts_mask = None
     images_mask = None
     images = None
     texts = None
     df = None
+    comments= None
     gc.collect()
 
     print("Saving pickle... Memory Usage:", psutil.Process(getpid()).memory_info().rss / 1024 ** 2)
