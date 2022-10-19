@@ -18,6 +18,7 @@ DATASET_NAME = "MARCH_21"
 LOAD_PREPROCESSED_DATASET=True
 DO_TEXT_PREPROCESSING=False
 
+
 ############# STEP 1 : COMMENT SELECTION #############
 
 #If we have a preprocessed dataset already, we can use that (only selects comments that are not generic)
