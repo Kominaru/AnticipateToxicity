@@ -1,5 +1,8 @@
 venv39/
+venc39/
 preprocessed_datasets/
 *.csv
 lightning_tests.py
-BERT_EMBEDDINGS/MARCH_21
+BERT_EMBEDDINGS/
+__pycache__/
+other_models/
