@@ -6,3 +6,4 @@ lightning_tests.py
 BERT_EMBEDDINGS/
 __pycache__/
 other_models/
+grid_search/
