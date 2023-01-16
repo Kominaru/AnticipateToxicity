@@ -177,7 +177,6 @@ def train_test_split(df, method, drop_untested_users=False, balance_train=False,
             positives=user_group["Toxicity"].sum()
             negatives=len(user_group)-positives
             extra_samples = train[(~(train['subreddit_id'].isin(user_group['subreddit_id']))) & (train['Toxicity']==(negatives>positives))].sample(max(positives,negatives)-min(positives,negatives))
-            # extra_samples['Toxicity']=min(positives,negatives)
             
             return pd.concat([user_group,extra_samples])
         train = train.groupby(['author_id']).apply(negative_sampling).reset_index(drop=True)
@@ -261,6 +260,8 @@ def get_userweight_array(inputs,labels,tox_user_weights):
 
 def obtain_tox_grid_weights(train_set):
 
+    plt.rcParams["figure.figsize"]=(7,12)
+
     user_mean_toxicity = train_set.groupby('author_id')['Toxicity'].mean().to_frame('mean_toxicity').reset_index()
     subreddit_mean_toxicity = train_set.groupby('subreddit_id')['Toxicity'].mean().to_frame('mean_toxicity').reset_index()
 
@@ -270,7 +271,10 @@ def obtain_tox_grid_weights(train_set):
     xx = np.around(np.linspace(0,1,samples_per_axis+1),2)
 
     weights = np.empty((xx.shape[0],xx.shape[0],2))
-    weights.fill(np.nan)
+    weights.fill(1)
+
+    no_test_cases = np.empty((xx.shape[0],xx.shape[0]))
+    no_test_cases.fill(np.nan)
 
     for ii,subreddit_toxicity in enumerate(xx):
         for jj,user_toxicity in enumerate(xx):
@@ -285,26 +289,52 @@ def obtain_tox_grid_weights(train_set):
 
 
             if len(active_samples)>0:
-                weights[ii,jj,0]=1-(len(active_samples)-active_samples['Toxicity'].sum())/len(train_set)
-                weights[ii,jj,1]=1-(active_samples['Toxicity'].sum())/len(train_set)
+                if (len(active_samples)-active_samples['Toxicity'].sum())>0:
+                    weights[ii,jj,0]=(len(active_samples)-active_samples['Toxicity'].sum())
+                if active_samples['Toxicity'].sum()>0:
+                    weights[ii,jj,1]=active_samples['Toxicity'].sum()
+                # if active_samples['Toxicity'].sum()>0:
+                #     weights[ii,jj,1]=len(train_set)/(active_samples['Toxicity'].sum())
+                # if (len(active_samples)-active_samples['Toxicity'].sum())>0:
+                #     weights[ii,jj,0]=len(train_set)/(len(active_samples)-active_samples['Toxicity'].sum())
+                
+
+                no_test_cases[ii,jj]=len(active_samples)
     
     find_nearest = np.vectorize(lambda value: (np.abs(xx - value)).argmin())
     user_mean_toxicity = find_nearest(user_mean_toxicity['mean_toxicity'])
     subreddit_mean_toxicity = find_nearest(subreddit_mean_toxicity['mean_toxicity'])
-    weights*=(1/np.nanmin(weights))
 
-    plt.contourf(xx,xx,weights[...,0])
-    plt.colorbar()
-    plt.show()
+    weights=(np.nanmax(weights))/weights
 
-    plt.contourf(xx,xx,weights[...,1])
-    plt.colorbar()
+    plt.subplot(3,1,1)
+    plt.title('Train cases')
+    plt.contourf(xx,xx,no_test_cases)
+    plt.ylim((0,0.3))
+    plt.colorbar(label="No. of Train Cases")
+    plt.xlabel('User mean toxicity')
+    plt.ylabel('Subreddit mean toxicity')
+
+    plt.subplot(3,1,2)
+    plt.title('Negative training sample weight')
+    plt.contourf(xx,xx,weights[...,0],levels=np.linspace(0,np.nanmax(weights),10))
+    plt.ylim((0,0.3))
+    plt.colorbar(label="Weight")
+    plt.xlabel('User mean toxicity')
+    plt.ylabel('Subreddit mean toxicity')
+
+    plt.subplot(3,1,3)
+    plt.title('Positive training sample weight')
+    plt.contourf(xx,xx,weights[...,1],levels=np.linspace(0,np.nanmax(weights),10))
+    plt.ylim((0,0.3))
+    plt.colorbar(label="Weight")
+    plt.xlabel('User mean toxicity')
+    plt.ylabel('Subreddit mean toxicity')
+    plt.tight_layout()
     plt.show()
 
     return user_mean_toxicity,subreddit_mean_toxicity,weights
 
 def get_gridweight_array(inputs,labels,user_mean_toxicity,sub_mean_toxicity,grid_weights):
     weights = grid_weights[user_mean_toxicity[inputs[:,0]],sub_mean_toxicity[inputs[:,1]],labels.astype(np.int8)]
-    
-    print(user_mean_toxicity[inputs[:,0][np.where(np.isnan(weights))]],sub_mean_toxicity[inputs[:,1][np.where(np.isnan(weights))]])
     return weights

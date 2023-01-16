@@ -5,6 +5,7 @@ from nltk.tokenize import word_tokenize
 from nltk import pos_tag
 from nltk import download
 import string
+import pandas as pd
 
 download('punkt')
 download('averaged_perceptron_tagger')
@@ -44,6 +45,6 @@ def preprocess_text(text):
         print(text)
 
 def subreddit_keywords(df,subreddit_id):
-    popular_in_subreddit=df[df['subreddit_id']==subreddit_id]['preprocessed_body'].explode().value_counts().reset_index().head(150)["index"].to_list()
-    popular_in_other=df[df['subreddit_id']!=subreddit_id]['preprocessed_body'].explode().value_counts().reset_index().head(150)["index"].to_list()
+    popular_in_subreddit=pd.Series(word for word_list in df[df['subreddit_id']==subreddit_id]['preprocessed_body'] for word in word_list).value_counts().head(150).to_list()
+    popular_in_other=pd.Series(word for word_list in df[df['subreddit_id']!=subreddit_id]['preprocessed_body'] for word in word_list).value_counts().head(150).to_list()
     return [keyword for keyword in popular_in_subreddit if keyword not in popular_in_other]

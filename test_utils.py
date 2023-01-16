@@ -8,6 +8,8 @@ from os import remove
 import seaborn as sns
 from torchmetrics import MeanSquaredError
 from matplotlib.ticker import LogLocator
+from src.utils import get_confmatrix
+
 def test(test_dataloader,model_name, CONFIG):
     
     
@@ -237,10 +239,7 @@ def plot_performance_by_mean_comb_toxicity(train_set,test_set,model_name,test_da
             active_samples= df [(df["author_id"].isin(toxicity_users)) & (df["subreddit_id"].isin(toxicity_subs)) ]
 
             #Get the acc obtained in those samples
-            tp  = np.float32(len(active_samples[(active_samples["label"]>0.5) & (active_samples["output"]>0.5)]))
-            fp  = np.float32(len(active_samples[(active_samples["label"]<0.5) & (active_samples["output"]>0.5)]))
-            fn  = np.float32(len(active_samples[(active_samples["label"]>0.5) & (active_samples["output"]<0.5)]))
-            tn  = np.float32(len(active_samples[(active_samples["label"]<0.5) & (active_samples["output"]<0.5)]))
+            
 
 
             if len(active_samples)>0:

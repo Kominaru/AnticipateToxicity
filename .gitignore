@@ -7,3 +7,7 @@ BERT_EMBEDDINGS/
 __pycache__/
 other_models/
 grid_search/
+data_extraction/big_dataset_nov22.csv_informative
+data_extraction/big_dataset_nov22.csv_preprocessed_texts
+data_extraction/coronavirus_2021q1_all.csv_RAWFINAL
+auc-contour.png

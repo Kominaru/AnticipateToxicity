@@ -10,13 +10,13 @@ import pandas as pd
 import psutil
 import tqdm
 
-MODE="embeds"
+MODE=None
 CORONAVIRUS_FILENAME = "coronavirus_2021q1_all.csv"
-OTHER_SUBREDDITS_FILENAME = "r_coronavirus_users_comments_march21.csv"
+OTHER_SUBREDDITS_FILENAME = "big_dataset_nov22.csv"
 DATETIME_MIN = datetime.datetime.timestamp(datetime.datetime(2021, 3, 1, 0))
 DATASET_NAME = "MARCH_21"
-LOAD_PREPROCESSED_DATASET=True
-DO_TEXT_PREPROCESSING=False
+LOAD_PREPROCESSED_DATASET=False
+DO_TEXT_PREPROCESSING=True
 BERT_MODEL="toxic" #original or toxic
 
 ############# STEP 1 : COMMENT SELECTION #############
@@ -28,16 +28,20 @@ if LOAD_PREPROCESSED_DATASET:
 
 else: 
     #Load r/covid dataset, select posts in march 2021
-    df_covid_r = pd.read_csv(CORONAVIRUS_FILENAME)
+    df_covid_r = pd.read_csv('data_extraction/'+CORONAVIRUS_FILENAME)
     df_covid_r["Publish Date"] = df_covid_r["Publish Date"].apply(
         lambda x: datetime.datetime.timestamp(datetime.datetime.strptime(x, "%Y-%m-%d %H:%M:%S")))
     df_covid_r = df_covid_r[df_covid_r["Publish Date"] > DATETIME_MIN]
 
     #Load dataset with user comments on other subreddits
-    df_other_r = pd.read_csv(OTHER_SUBREDDITS_FILENAME)
+    df_other_r = pd.read_csv('data_extraction/'+OTHER_SUBREDDITS_FILENAME)
+    df_other_r = df_other_r.drop_duplicates(['Post ID'], keep='first')
 
     print(f"Loaded {CORONAVIRUS_FILENAME} ({df_covid_r.shape[0]} r/covid comments)")
     print(f"Loaded {OTHER_SUBREDDITS_FILENAME} ({df_other_r.shape[0]} comments from other subreddits)")
+
+    print(f"Obtained dataset with {df_other_r.shape[0]} comments.")
+    print(f"Unique comments: {df_other_r['Body'].nunique()}")
 
     #This tries to get rid of auto-moderation comments, e.g. "your comment has been removed due to (...)"
     #This is a trivial approach, eventually need to do it in a way that measures if a user has a lot of almost identical comments
@@ -64,13 +68,16 @@ else:
     df_other_r["is_covid_related"] = df_other_r.apply(lambda row: is_covid_related(row), axis=1)
     df_covid_r["is_covid_related"] = True
 
-    ### Select only those comments on subreddits where there's more than 20 unique users talking about covid ###
-    # print("Selecting comments on subreddits with more than 20 users talking about covid... ", end="")
+    ### Select only those comments on subreddits where there's more than 50 unique users talking about covid ###
+    print("Selecting comments on subreddits with more than 20 users talking about covid... ", end="")
     # covid_comments = df_other_r[df_other_r["is_covid_related"] == True] 
     # covid_users_per_subreddit = covid_comments.groupby(["Subreddit", "Author"]).size().reset_index().groupby("Subreddit").size().reset_index().rename(columns={0: 'count'})
     # subreddits_with_covid_20_covid_users = covid_users_per_subreddit[covid_users_per_subreddit['count'] >= 20]["Subreddit"]
     # df_other_r = df_other_r[df_other_r["Subreddit"].isin(subreddits_with_covid_20_covid_users)]
-
+    print(f"Before:{df_other_r['Subreddit'].nunique()} subreddits")
+    df_other_r = df_other_r.groupby('Subreddit').filter(lambda s: s['Author'].nunique()>=20)
+    print(f"After:{df_other_r['Subreddit'].nunique()} subreddits")
+    print(f"After:{df_other_r['Author'].nunique()} authors")
     ### Merge r/covid and other subreddis' comments datasets ###
     print("Merging both datasets...")
     df = pd.concat([df_other_r[["Subreddit", "Body", "Author","is_covid_related"]], df_covid_r[["Subreddit", "Body", "Author","is_covid_related"]]]).reset_index(drop=True)
@@ -79,17 +86,22 @@ else:
     df = df[df['Body'].notna()]
     print(df.shape[0])
 
+    # print(f"Before:{df_other_r['Author'].nunique()} subreddits")
+    # df_other_r = df_other_r.groupby('Author').filter(lambda s: s['Subreddit'].nunique()>5)
+    # print(f"After:{df_other_r['Author'].nunique()} subreddits")
 
     print(f"Obtained dataset with {df.shape[0]} comments.")
+    print(f"Unique comments: {df['Body'].nunique()}")
+
 
     df = df.assign(author_id=(df["Author"]).astype('category').cat.codes)
     df = df.assign(subreddit_id=(df["Subreddit"]).astype('category').cat.codes)
     df = df.drop(['Subreddit', 'Author'], axis=1)
     df["comment_id"] = np.arange(0, df.shape[0]).tolist()
 
-    print(df)
+    # print(df)
 
-    df.to_csv(f'preprocessed_datasets/{CORONAVIRUS_FILENAME}_RAWFINAL', encoding='utf-8', index=False)
+    df.to_csv(f'data_extraction/{CORONAVIRUS_FILENAME}_RAWFINAL', encoding='utf-8', index=False)
 
     input()
     ##########################################################
@@ -97,15 +109,11 @@ else:
     ##########################################################
 
     print("Pickling with protocol ", pickle.HIGHEST_PROTOCOL)
-    makedirs(f"{DATASET_NAME}/IMGMODEL/data_10+10/", exist_ok=True)
-    makedirs(f"{DATASET_NAME}/IMGMODEL/original_take/", exist_ok=True)
-
-    df = df.assign(author_id=(df["Author"]).astype('category').cat.codes)
-    df = df.assign(subreddit_id=(df["Subreddit"]).astype('category').cat.codes)
-    df = df.drop(['Subreddit', 'Author'], axis=1)
+    # makedirs(f"{DATASET_NAME}/IMGMODEL/data_10+10/", exist_ok=True)
+    # makedirs(f"{DATASET_NAME}/IMGMODEL/original_take/", exist_ok=True)
 
     if DO_TEXT_PREPROCESSING:
-        from data_extraction.text_utils import preprocess_text, subreddit_keywords
+        from text_utils import preprocess_text, subreddit_keywords
 
         print("Preprocessing texts...")
         tqdm.tqdm.pandas()
@@ -117,28 +125,37 @@ else:
         for i,subreddit_id in enumerate(pd.unique(df['subreddit_id'])):
             print(f"Filtering generic comments for subreddit {i}/{df['subreddit_id'].nunique()}...", end='\r')
             specific_subreddit_keywords=subreddit_keywords(df,subreddit_id)
-            df["is_informative_comment"]=df.apply(lambda row: row['is_informative_comment'] if subreddit_id!=row['subreddit_id']  else not set(row['preprocessed_body']).isdisjoint(specific_subreddit_keywords) or subreddit_id!=row['subreddit_id'] or row["is_covid_related"],axis=1)
+            # A comment is marked as informative if: 
+            # a) The comment has at least one subreddit-specific keyword
+            # b) The comment talks about Covid
+            df["is_informative_comment"]=df.apply(lambda row: row['is_informative_comment'] if subreddit_id!=row['subreddit_id']  else (not set(row['preprocessed_body']).isdisjoint(specific_subreddit_keywords) or subreddit_id!=row['subreddit_id'] or row["is_covid_related"]),axis=1)
 
         df=df[df["is_informative_comment"]==True]
         
-
+    print(f'Obtained {len(df)} informative comments')
     #Fabricate new author and subreddit id's
+    df = df.groupby('subreddit_id').filter(lambda s: s['author_id'].nunique()>=20)
+    df = df.groupby('author_id').filter(lambda s: s['subreddit_id'].nunique()>=5)
     df = df.assign(author_id=(df["author_id"]).astype('category').cat.codes)
     df = df.assign(subreddit_id=(df["subreddit_id"]).astype('category').cat.codes)
+
+    print(f'Obtained {len(df)} comments after filtering active subreddits and users')
     df["comment_id"] = np.arange(0, df.shape[0]).tolist()
     
-    df = df.drop(['is_informative_comment'])
+    df = df.drop(['is_informative_comment'],axis=1)
 
-    df.drop(['Body']).to_csv(f'preprocessed_datasets/{CORONAVIRUS_FILENAME}_preprocessed_texts', encoding='utf-8', index=False)
+    df.drop(['Body'],axis=1).to_csv(f'data_extraction/{OTHER_SUBREDDITS_FILENAME}_preprocessed_texts', encoding='utf-8', index=False)
 
     if DO_TEXT_PREPROCESSING:
         print(f"Total unique users: {df['author_id'].unique().shape[0]}")
         print(f"Total unique subreddits: {df['subreddit_id'].unique().shape[0]}")
+        print(f"Total samples: {len(df)}")
+        print(f"Total interactions: {df.groupby(['author_id','subreddit_it']).ngroups}")
 
     if DO_TEXT_PREPROCESSING:
         df = df.drop(['preprocessed_body'], axis=1)
         makedirs('preprocessed_datasets',exist_ok=True)
-        df.to_csv(f'preprocessed_datasets/{CORONAVIRUS_FILENAME}_informative', encoding='utf-8', index=False)
+        df.to_csv(f'data_extraction/{OTHER_SUBREDDITS_FILENAME}_informative', encoding='utf-8', index=False)
 
 comments = df["Body"].to_numpy()
 df = df.drop(['Body'], axis=1)
@@ -177,8 +194,8 @@ if MODE == "embeds":
             return np.average(text_model(tokenizer(text, return_tensors='tf', padding=True, truncation=True))[0].numpy(),axis=1)
     elif BERT_MODEL=="toxic":
         def embed_text(text):
-            # return np.average(text_model(tokenizer(text,padding=True,truncation=True, return_tensors="pt")["input_ids"].to(device="cuda"))["last_hidden_state"].cpu().detach().numpy(),axis=1)
-            return text_model(tokenizer(text,padding=True,truncation=True, return_tensors="pt")["input_ids"].to(device="cuda"))["pooler_output"].cpu().detach().numpy()
+            return np.average(text_model(tokenizer(text,padding=True,truncation=True, return_tensors="pt")["input_ids"].to(device="cuda"))["last_hidden_state"].cpu().detach().numpy(),axis=1)
+            # return text_model(tokenizer(text,padding=True,truncation=True, return_tensors="pt")["input_ids"].to(device="cuda"))["pooler_output"].cpu().detach().numpy()
     #Embed all texts 
 
     batch_size=8
