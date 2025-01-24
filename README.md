@@ -15,7 +15,7 @@ The dataset used in this work was obtained using PushShift.io API, and consists 
 <h3>Reproducibility</h3>
 
 The provided framework was developed in Python 3.9 and uses CUDA 11.1 for GPU acceleration. 
-If set up correctly, `python3 main.py` will run the full pipeline, from data preprocessing to model evaluation. 
+If set up correctly, `python3 main.py` should run the full pipeline, from data preprocessing to model evaluation. 
 
 
 <h3>Licensing</h3>
@@ -23,7 +23,7 @@ If set up correctly, `python3 main.py` will run the full pipeline, from data pre
 ```
 MIT License
 
-Copyright (c) 2023 Anonymous authors
+Copyright (c) 2025 Anonymous authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
