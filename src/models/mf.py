@@ -14,6 +14,9 @@ class MF(torch.nn.Module):
 
         self.user_emb = Embedding(self.n_users, self.d)
         self.sub_emb = Embedding(self.n_subs, self.d)
+        
+        torch.nn.init.normal_(self.user_emb.weight, 0, .1)
+        torch.nn.init.normal_(self.sub_emb.weight, 0, .1)
 
         if bias == 'prior':
 
@@ -33,8 +36,6 @@ class MF(torch.nn.Module):
             self.sub_bias.weight.data.fill_(0.0)
             self.global_bias.data.fill_(0.0)
 
-        torch.nn.init.normal_(self.user_emb.weight, 0, .1)
-        torch.nn.init.normal_(self.sub_emb.weight, 0, .1)
 
         self.device = device
         self = self.to(device)
@@ -42,7 +43,7 @@ class MF(torch.nn.Module):
     def __str__(self) -> str:
         return f"MF (d={self.d}, bias {self.bias})"
 
-    def forward(self, batch_data):
+    def forward(self, batch_data, test=False, training_phase = 0):
         """Trian the model.
         Args:
             batch_data: tuple consists of [users, subs], which must be LongTensor.
@@ -76,26 +77,46 @@ class MF(torch.nn.Module):
                 torch.sum(torch.mul(u_emb+self.u_emb_bias, s_emb+self.s_emb_bias).squeeze(), dim=1)
                 # torch.sum(torch.mul(u_emb, s_emb+self.s_emb_bias).squeeze(), dim=1)
                 # torch.sum(torch.mul(u_emb+self.u_emb_bias, s_emb).squeeze(), dim=1)
+                # torch.sum(torch.mul(u_emb, self.s_emb_bias).squeeze(), dim=1)
+                # torch.sum(torch.mul(s_emb, self.u_emb_bias).squeeze(), dim=1)
             )
 
-            regularizer = (
-                (u_emb ** 2).sum()
-                + (s_emb ** 2).sum()
-                + (self.u_emb_bias ** 2).sum()
-                + (self.s_emb_bias ** 2).sum()
-            ) / u_emb.size()[0]
+            if training_phase == 0:
+                regularizer = (
+                    (u_emb ** 2).sum()
+                    + (s_emb ** 2).sum()
+                    + (self.u_emb_bias ** 2).sum()
+                    + (self.s_emb_bias ** 2).sum()
+                ) / users.size()[0]
+            
+            elif training_phase==1:
+
+                regularizer = (
+                    (u_emb ** 2).sum()
+                    + (self.s_emb_bias ** 2).sum()
+                ) / users.size()[0]
+
+            elif training_phase==2:
+                regularizer = (
+                    (s_emb ** 2).sum()
+                    + (self.u_emb_bias ** 2).sum()
+                ) / users.size()[0]
 
         elif self.bias == 'unknowns':
-            unknown_ratio=0.05
+            unknown_ratio=0.2
 
-            use_unknown_u = torch.rand((u_emb.size()[0],1), device=self.device)
-            use_unknown_s = torch.rand((s_emb.size()[0],1), device=self.device)
+            if not test:
+                use_unknown_u = torch.rand((u_emb.size()[0],1), device=self.device)
+                use_unknown_s = torch.rand((s_emb.size()[0],1), device=self.device)
 
-            u_aux = torch.add(u_emb*((use_unknown_u>unknown_ratio).float()),
-                                torch.matmul((use_unknown_u<=unknown_ratio).float(),self.unknown_u.unsqueeze(0)))
-            s_aux = torch.add(s_emb*((use_unknown_s>unknown_ratio).float()),
-                                torch.matmul((use_unknown_s<=unknown_ratio).float(),self.unknown_s.unsqueeze(0)))
+                u_aux = torch.add(u_emb*((use_unknown_u>unknown_ratio).float()),
+                                    torch.matmul((use_unknown_u<=unknown_ratio).float(),self.unknown_u.unsqueeze(0)))
+                s_aux = torch.add(s_emb*((use_unknown_s>unknown_ratio).float()),
+                                    torch.matmul((use_unknown_s<=unknown_ratio).float(),self.unknown_s.unsqueeze(0)))
 
+            else: 
+                u_aux = u_emb
+                s_aux = s_emb
 
             scores = torch.sigmoid(
                 torch.sum(torch.mul(u_aux, s_aux).squeeze(), dim=1)
@@ -108,13 +129,13 @@ class MF(torch.nn.Module):
 
         return scores, regularizer
 
-    def predict(self, batch):
+    def predict(self, batch, **params):
         """Predcit result with the model.
         Return:
             scores (int, or list of int): predicted scores of these user-item pairs.
         """
         with torch.no_grad():
-            scores, _ = self.forward(batch)
+            scores, _ = self.forward(batch, **params)
         return scores
 
     

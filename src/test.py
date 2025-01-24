@@ -1,4 +1,6 @@
-from math import ceil
+from math import ceil, sqrt
+from random import random, randrange, uniform
+from matplotlib import ticker
 from matplotlib.ticker import LogLocator
 import torch
 import pandas as pd
@@ -18,6 +20,8 @@ def get_predictions_from_dataloader(test_dataloader,model_path):
 
     for _, (inputs, labels) in enumerate(test_dataloader):
         
+        labels = labels.round()
+
         scores = model.predict(inputs)
         predictions = ((scores.cpu() > 0.5)).float().detach().numpy()
 
@@ -37,14 +41,17 @@ def get_predictions_from_dataloader(test_dataloader,model_path):
 
 def plot_user_subreddit_contour(xx,grid_values,name,data_params,title):
     max_subreddit_toxicity = xx[np.max(np.where(np.nansum(grid_values,axis=1)>0))]
-    plt.figure(figsize=(10,10*max_subreddit_toxicity))
+    plt.rcParams.update({'font.size': 17})
+    plt.figure(figsize=(10,5))
     plt.contourf(xx,xx,grid_values,**data_params)
     plt.colorbar()
-    plt.ylabel("Mean subreddit toxicity")
-    plt.xlabel("Mean user toxicity")
-    plt.title(f"{title} by mean user and subreddit toxicity")
+    plt.ylabel("Subreddit's mean\ntoxicity (Train)")
+    plt.yticks([0,0.1,0.2,0.3])
+    plt.xlabel("User's mean toxicity (Train)")
+    plt.title(f"{title} by Train \n(user's mean toxicity, subreddit's mean toxicity)")
     plt.ylim(0,round(max_subreddit_toxicity,1))
-    plt.savefig(f"{name}",dpi=300, bbox_inches = "tight")
+    plt.tight_layout()
+    plt.savefig(f"{name}",dpi=300)
 
 
 
@@ -85,7 +92,9 @@ def test_roc_grid(directory,model_name,dataset,use_train=False):
 
     train_set = dataset.train
     test_set = dataset.test if use_train==False else dataset.train
-    test_dataloader = dataset.get_dataloaders()[0 if use_train==False else 1]
+
+    train_dataloader, test_dataloader = dataset.get_dataloaders()
+    if use_train==True: test_dataloader=train_dataloader
 
     test_results = get_predictions_from_dataloader(test_dataloader, f"grid_search/{directory}/{model_name}")
     test_results = test_results.merge(test_set,on=['author_id','subreddit_id'],how='inner')
@@ -114,7 +123,7 @@ def test_roc_grid(directory,model_name,dataset,use_train=False):
     
 
 
-    plt.savefig(f"grid_search/{directory}/roc-grid.pdf",dpi=300, bbox_inches = "tight")
+    plt.savefig(f"grid_search/{directory}/roc-grid-{'train' if train_set.equals(test_set) else 'test'}.pdf",dpi=300, bbox_inches = "tight")
     plt.clf()
     plt.cla()
 
@@ -145,13 +154,74 @@ def test_saved(directory,model_name,dataset):
     
     test_results = get_predictions_from_dataloader(test_dataloader, f"grid_search/{directory}/{model_name}")
 
+    def plot_tox_distribution(set,name):
+
+        avg_user_toxicity = train_set.groupby('author_id')['Toxicity'].mean().reset_index(drop=False)
+        avg_user_toxicity.columns = ['author_id','avg_u_tox']
+
+        avg_sub_toxicity = train_set.groupby('subreddit_id')['Toxicity'].mean().reset_index(drop=False)
+        avg_sub_toxicity.columns = ['subreddit_id','avg_s_tox']
+
+        set = pd.merge(set,avg_user_toxicity,on= 'author_id', how='left')
+        set = pd.merge(set,avg_sub_toxicity,on= 'subreddit_id', how='left')
+
+        nbins=50
+        xi = np.linspace(0,1,nbins)
+
+        test_cases = np.empty((xi.shape[0],xi.shape[0]))
+        print(test_cases)
+
+        for ii,i in enumerate(xi):
+            for jj,j in enumerate(xi):
+                active_samples = set[set['avg_u_tox'].between(i-0.05,i+0.05) & set['avg_s_tox'].between(j-0.05,j+0.05)]
+                test_cases[ii,jj] = len(active_samples)
+
+        test_cases=test_cases.T
+        # max_subreddit_toxicity = xi[np.max(np.where(np.nansum(test_cases,axis=1)>0))]
+
+        # plt.rcParams.update({'font.size': 17})
+        # plt.figure(figsize=(10,5))
+        # plt.contourf(xi,xi,test_cases,cmap='Blues',locator=ticker.LogLocator())
+        # plt.colorbar()
+        # plt.ylabel("Subreddit's mean\ntoxicity")
+        # plt.xlabel("User's mean toxicity")
+        # plt.title(f"{name} sample distribution by \n (user's mean toxicity, subreddit's mean toxicity)")
+        
+        # plt.ylim(0,round(max_subreddit_toxicity,1))
+        # plt.yticks([0,0.1,0.2,0.3])
+        # plt.tight_layout()
+        # plt.savefig(f"figuras_memoria/test_cases_{name}.pdf",dpi=300, bbox_inches = "tight")
+        # plt.show()
+        plot_user_subreddit_contour(xi,test_cases,f"grid_search/{directory}/meantoxicity-combs-best-model-{name}cases.pdf",data_params={"locator":LogLocator(),"cmap":"Blues"},title=f"{name} Cases")
+
     train_set, test_set = dataset.train, dataset.test
+
+    plot_tox_distribution(train_set, name = 'Train')
+    plot_tox_distribution(test_set, name = 'Test')
 
     user_mean_toxicity = train_set[train_set['author_id'].isin(test_set["author_id"])].groupby('author_id')['Toxicity'].mean().to_frame('mean_toxicity').reset_index()
     subreddit_mean_toxicity = train_set[train_set['subreddit_id'].isin(test_set["subreddit_id"])].groupby('subreddit_id')['Toxicity'].mean().to_frame('mean_toxicity').reset_index()
 
     samples_per_axis = 25
     window_size = .1
+
+    def print_metrics(labels,preds):
+        labels=labels.to_numpy()
+        preds=preds.to_numpy()
+
+        tp = np.sum(np.logical_and(preds,labels))
+        tn = np.sum(np.logical_and(np.logical_not(preds),np.logical_not(labels)))
+        fn = np.sum(np.logical_and(np.logical_not(preds),labels))
+        fp = np.sum(np.logical_and(preds,np.logical_not(labels)))
+
+        accuracy = (tp+tn)/(tn+fp+tp+fn)
+        sensitivity = (tp)/(tp+fn)
+        specificity = (tn)/(tn+fp)
+        g_mean = sqrt(sensitivity*specificity)
+
+        print(f"ACC\t{accuracy:.2f}\tSEN\t{sensitivity:.2f}\tSPE\t{specificity:.2f}\tG-M\t{g_mean:.2f}")
+
+    print_metrics(test_results['label'],test_results['output'])
 
     xx = np.around(np.linspace(0,1,samples_per_axis),2)
 
@@ -182,10 +252,11 @@ def test_saved(directory,model_name,dataset):
                 balanced_acc[ii,jj] = np.nanmean([(tp)/(tp+fn),(tn)/(tn+fp)])
                 acc[ii,jj] = (tp+tn)/len(active_samples)
                 if len(active_samples)>active_samples['label'].sum() and active_samples['label'].sum()>0:
+
                     auc[ii,jj] = roc_auc_score(active_samples['label'],active_samples['score'])
 
 
-    plot_user_subreddit_contour(xx,no_test_cases,f"grid_search/{directory}/meantoxicity-combs-best-model-testcases.pdf",data_params={"locator":LogLocator(),"cmap":"Spectral"},title="Test Cases")
+    plot_user_subreddit_contour(xx,no_test_cases,f"grid_search/{directory}/meantoxicity-combs-best-model-testcases.pdf",data_params={"locator":LogLocator(),"cmap":"Blues"},title="Test Cases")
     plot_user_subreddit_contour(xx,balanced_acc,f"grid_search/{directory}/meantoxicity-combs-best-model-balancedacc.pdf",data_params={"levels":np.arange(0,1+0.1,0.1),"cmap":"Spectral"}, title="Balanced Accuracy")
-    plot_user_subreddit_contour(xx,acc,f"grid_search/{directory}/meantoxicity-combs-best-model-acc.pdf",data_params={"levels":np.arange(0,1+0.1,0.1),"cmap":"Spectral"}, title="Accuracy")
-    plot_user_subreddit_contour(xx,auc,f"grid_search/{directory}/meantoxicity-combs-best-model-auc.pdf",data_params={"levels":np.arange(0,1+0.1,0.1),"cmap":"Spectral"}, title="ROC-AUC Score")
+    plot_user_subreddit_contour(xx,acc,f"grid_search/{directory}/meantoxicity-combs-best-model-acc.pdf",data_params={"levels":np.arange(0,1+0.1,0.1),"cmap":"RdYlGn"}, title="Accuracy")
+    plot_user_subreddit_contour(xx,auc,f"grid_search/{directory}/meantoxicity-combs-best-model-auc.pdf",data_params={"levels":np.arange(0,1+0.1,0.1),"cmap":"RdYlGn"}, title="Test AUC-ROC")

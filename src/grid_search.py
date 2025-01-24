@@ -6,6 +6,7 @@ from src.models.mf import MF
 from src.dataset import ToxicityCommentsDataset
 from src.test import test_saved, test_roc_grid
 from src.plots import plot_toxicity_distribution_grid
+from math import ceil
 
 def save_params_text(path, *paramdicts):
     text = ""
@@ -28,6 +29,9 @@ def grid_search(params, name='test'):
     dataset.split(params['split_strategy'])
     if 'sampling_strategy' in params:
         dataset.apply_negative_sampling(strategy= params['sampling_strategy'])
+    
+    if 'labelling_strategy' in params:
+        dataset.apply_labelling_strategy(strategy = params['labelling_strategy'])
 
     print(np.average(dataset._y_train.cpu().detach().numpy()))
     # plot_toxicity_distribution_grid(f'grid_search/{name}',dataset.train)
@@ -42,7 +46,7 @@ def grid_search(params, name='test'):
                 
                 if params['model_name'] == 'MF':
                     model = MF(dataset.nusers, dataset.nsubs, d=d, bias=params['bias'])
-                results, min_test_loss = train_toxicity_model(model, dataset, learning_rate=lr, l2_reg=reg, epochs=params['epochs'], batch_size=params['batch_size'], best_test_loss=best_test_loss, figure_path=f'grid_search/{name}', weights=params['weights'])
+                results, min_test_loss = train_toxicity_model(model, dataset, learning_rate=lr, l2_reg=reg, epochs=params['epochs'], batch_size=params['batch_size'], best_test_loss=best_test_loss, figure_path=f'grid_search/{name}', weights=params['weights'], class_labelling_strat=params['data_labelling'], two_step_training=params["two_step_training"])
 
                 if min_test_loss<=best_test_loss:
                     best_test_loss=min_test_loss
@@ -53,14 +57,13 @@ def grid_search(params, name='test'):
                 plt.subplot(len(params['lr']),len(params['reg']),i)
                 plt.title(f"d={d} | lr={lr} | l2-reg={reg}",fontdict={'fontsize': 12})
 
-                plt.xticks(np.arange(0,params['epochs']+1,100),fontsize=12)
+                plt.xticks(np.arange(0, ceil((params['epochs']+1)/100)*100,100),fontsize=12)
                 plt.yticks(np.arange(0.25,1.5+0.25,0.25),fontsize=12)
 
                 plt.xlabel("Epoch",fontsize=12)
                 plt.ylabel("BCE Loss", fontsize=12)
                 
-
-                plt.xlim(0,params['epochs'])
+                plt.xlim(0,max(ceil((epochs_run+1)/100)*100,100))
 
                 plt.ylim(0,1.5)
                 

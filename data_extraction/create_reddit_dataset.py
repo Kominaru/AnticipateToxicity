@@ -68,6 +68,19 @@ else:
     df_other_r["is_covid_related"] = df_other_r.apply(lambda row: is_covid_related(row), axis=1)
     df_covid_r["is_covid_related"] = True
 
+    import matplotlib.pyplot as plt
+    unique_interactions = df_other_r.drop_duplicates(['author_id','subreddit_id'], keep = 'first')
+    authors_per_subreddit = unique_interactions.groupby('subreddit_id').size()
+    authors_per_subreddit[authors_per_subreddit>20]=20
+
+    ax = authors_per_subreddit.plot.hist(bins=10,xticks=np.arange(0,20,2))
+    ax.set_xlabel('Num. of visiting users')
+    ax.set_ylabel('Num. of subreddits')
+    plt.tight_layout()
+    plt.show()
+
+    input()
+    
     ### Select only those comments on subreddits where there's more than 50 unique users talking about covid ###
     print("Selecting comments on subreddits with more than 20 users talking about covid... ", end="")
     # covid_comments = df_other_r[df_other_r["is_covid_related"] == True] 

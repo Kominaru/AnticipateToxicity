@@ -11,3 +11,5 @@ data_extraction/big_dataset_nov22.csv_informative
 data_extraction/big_dataset_nov22.csv_preprocessed_texts
 data_extraction/coronavirus_2021q1_all.csv_RAWFINAL
 auc-contour.png
+oldframework/
+figuras_memoria/
